@@ -1,5 +1,6 @@
 ##DQN prototyping
 
+from tabnanny import verbose
 import gym
 import numpy as np
 import tensorflow as tf
@@ -67,13 +68,13 @@ class Model(keras.Model):
         super(Model, self).__init__()
         self.layer1 = keras.layers.Dense(64)
         self.layer2 = keras.layers.Dense(128)
-        self.layer3 = keras.layers.Dense(128)
+        # self.layer3 = keras.layers.Dense(128)
         self.layer4 = keras.layers.Dense(action_size)
         
     def call(self, input):
         x = self.layer1(input)
         x = self.layer2(x)
-        x = self.layer3(x)
+        # x = self.layer3(x)
         x = self.layer4(x)
         
         return x
@@ -83,7 +84,9 @@ def dqn(EPSILON):
     try:
         model = Model(env.action_space.n)
 
-        model.compile(loss=tf.losses.CategoricalCrossentropy(), optimizer=tf.optimizers.Adam(), metrics = tf.keras.metrics.CategoricalAccuracy())
+        model.compile(loss=tf.losses.CategoricalCrossentropy(), 
+                      optimizer=tf.optimizers.Adam(), 
+                      metrics = tf.keras.metrics.CategoricalAccuracy())
         replay = ExperienceReplay(10000)
         best_reward = 0
         scores = []
@@ -96,10 +99,11 @@ def dqn(EPSILON):
 
                 ## Choose an action
                 if np.random.random() > EPSILON:
-                    action = model.predict(state.reshape(1, -1))
+                    action = np.argmax(model.predict(state.reshape(1, -1), verbose = False), axis = 1)[0]
                 else:
                     action = env.action_space.sample()
                 env.render()
+                # print(action)
                 state_p, reward, done, _ = env.step(action=action)
                 replay.add(Exp(s = state, 
                                a = action,
@@ -108,34 +112,46 @@ def dqn(EPSILON):
                                s_p = state_p))
                 #Learn 
                 states, actions, rewards, dones, states_p = replay.sample()
-                q_vals = model.predict(states)
-                print(f'q_vals.shape:{q_vals.shape}')
-                print(f'actions:{actions}')
-                q_vals_new = np.max(model.predict(states_p), axis = 1)
+                q_vals = model.predict(states, verbose = False)
+                # print(f'q_vals.shape:{q_vals.shape}')
+                # print(f'actions:{actions}')
+                q_vals_new = np.max(model.predict(states_p, verbose = False), axis = 1)
 
-                q_target = rewards + GAMMA * q_vals_new * dones
-                print(q_target.shape)
-                print(states.shape)
-                model.fit(states, q_target, epochs = 1)
+                q_target = rewards + GAMMA * q_vals_new * (1 - dones)
+                # for idx, ele in enumerate(q_target):
+                #     q_vals[idx, actions[idx]] = ele
+                q_vals[ np.array(range(len(actions))), actions] = q_target
+                # print(q_target.shape)
+                # print(states.shape)
+                model.fit(states, 
+                          q_vals, 
+                          epochs = 1, 
+                          verbose = False)
 
-                EPSILON *= EPSILON_DECAY
-                state = state_np
+                
+                state = state_p
                 score += reward
-
+                # print(state)
                 if done:
                     if score > best_reward:
                         best_reward = score
                     print("Episode {}  Best Reward {} Last Reward {} Epsilon {}"\
-                          .format(i, best_reward, score, EPSILON))
+                          .format(episode, best_reward, score, EPSILON))
+                    
+                    scores.append(score)
                     break
-
-            scores.append[score]
+            EPSILON *= EPSILON_DECAY
+            
     except Exception as e:
         print(e)
+        
+    finally:
+        return scores
             
                 
 if __name__ == "__main__":
     
     env = gym.make("LunarLander-v2")
-    dqn(EPSILON)
+    scores = dqn(EPSILON)
+    print(scores)
         
