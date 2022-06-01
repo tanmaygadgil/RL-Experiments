@@ -1,5 +1,6 @@
 ##DQN prototyping
 
+from email import parser
 from os import replace
 from tabnanny import verbose
 import gym
@@ -8,10 +9,11 @@ import tensorflow as tf
 from collections import deque, namedtuple
 from tensorflow import keras
 import matplotlib.pyplot as plt
+import argparse
 
 
 ## Hardcoded values
-
+UPDATE_STEP = 10
 EPISODES = 300
 EPSILON = 1
 EPSILON_DECAY = 0.95
@@ -81,7 +83,8 @@ def dqn(EPSILON, env):
     
     try:
         model = Model(env.action_space.n)
-
+        target = Model(env.action_space.n)
+        
         model.compile(loss=tf.keras.losses.MeanSquaredError(), 
                       optimizer=tf.optimizers.Adam(), 
                       metrics = tf.keras.metrics.CategoricalAccuracy())
@@ -112,7 +115,7 @@ def dqn(EPSILON, env):
                 # q_vals = np.zeros((states.shape[0], env.action_space.n))
                 # print(f'q_vals.shape:{q_vals.shape}')
                 # print(f'actions:{actions}')
-                q_vals_new = np.max(model.predict(states_p, verbose = False), axis = 1)
+                q_vals_new = np.max(target.predict(states_p, verbose = False), axis = 1)
 
                 q_target = rewards + GAMMA * q_vals_new * dones
                 # q_vals[ np.array(range(len(actions))), actions] = q_target
@@ -128,6 +131,9 @@ def dqn(EPSILON, env):
                 
                 state = state_p
                 score += reward
+                
+                if episode > 0 and episode % UPDATE_STEP == 0:
+                    target.set_weights(model.get_weights())
                 # print(state)
                 if done:
                     if score > best_reward:
@@ -148,7 +154,17 @@ def dqn(EPSILON, env):
                 
 if __name__ == "__main__":
     
-    env = gym.make("LunarLander-v2")
+    parser = argparse.ArgumentParser()
+    parser.add_argument("--environment", default="lunarlander", type=str)
+    
+    args_dict = vars(parser.parse_args())
+    print(args_dict)
+    if args_dict['environment'] == "lunarlander":
+        env = gym.make("LunarLander-v2")
+    elif args_dict['environment'] == "cartpole":
+        env = gym.make("CartPole-v1")
+        
+        
     scores = dqn(EPSILON,env)
     print(scores)
     moving_ave = []
