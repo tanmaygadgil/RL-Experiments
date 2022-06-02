@@ -12,7 +12,7 @@ import matplotlib.pyplot as plt
 
 ## Hardcoded values
 
-EPISODES = 300
+EPISODES = 600
 EPSILON = 1
 EPSILON_DECAY = 0.95
 SAMPLE_BATCH = 64
@@ -83,7 +83,7 @@ def dqn(EPSILON, env):
         model = Model(env.action_space.n)
 
         model.compile(loss=tf.keras.losses.MeanSquaredError(), 
-                      optimizer=tf.optimizers.Adam(), 
+                      optimizer=tf.keras.optimizers.Adam(learning_rate=0.00025, clipnorm=1.0), 
                       metrics = tf.keras.metrics.CategoricalAccuracy())
         replay = ExperienceReplay(100000, env)
         best_reward = -float('inf')
