@@ -19,8 +19,6 @@ SAMPLE_BATCH = 64
 GAMMA = 0.95
 MIN_EPSILON = 0.01
 
-#Experience data structure
-
 class ExperienceReplay:
     def __init__(self, buffer_size, env):
         self.states = np.zeros((buffer_size, *env.observation_space.shape), dtype=np.float32)
@@ -43,7 +41,7 @@ class ExperienceReplay:
         self.actions[mem_index] = action
         self.rewards[mem_index] = reward
         self.states_p[mem_index] = state_p
-        self.dones[mem_index] =  1 - done
+        self.dones[mem_index] = done
         self.index += 1
     
     def sample(self, sample_size = 64):
@@ -65,26 +63,27 @@ class Model(keras.Model):
         super(Model, self).__init__()
         self.layer1 = keras.layers.Dense(64, activation = 'relu')
         self.layer2 = keras.layers.Dense(64, activation = 'relu')
-        self.layer3 = keras.layers.Dense(64, activation = 'relu')
+        # self.layer3 = keras.layers.Dense(64, activation = 'relu')
         
         self.layer4 = keras.layers.Dense(action_size)
         
     def call(self, input):
         x = self.layer1(input)
         x = self.layer2(x)
-        x = self.layer3(x)
+        # x = self.layer3(x)
         x = self.layer4(x)
         
         return x
-    
+
 def dqn(EPSILON, env):
     
     try:
         model = Model(env.action_space.n)
-
-        model.compile(loss=tf.keras.losses.MeanSquaredError(), 
-                      optimizer=tf.keras.optimizers.Adam(learning_rate=0.00025, clipnorm=1.0), 
-                      metrics = tf.keras.metrics.CategoricalAccuracy())
+        optimizer = keras.optimizers.Adam()
+        loss_fn = tf.keras.losses.Huber()
+        # model.compile(loss=tf.keras.losses.MeanSquaredError(), 
+        #               optimizer=tf.keras.optimizers.Adam(learning_rate=0.00025, clipnorm=1.0), 
+        #               metrics = tf.keras.metrics.CategoricalAccuracy())
         replay = ExperienceReplay(100000, env)
         best_reward = -float('inf')
         scores = []
@@ -97,35 +96,63 @@ def dqn(EPSILON, env):
                 ## Choose an action
                 if np.random.random() > EPSILON:
                     # action = np.argmax(model.predict(state.reshape(1, -1), verbose = False), axis = 1)[0]
-                    action = np.argmax(model.predict(state.reshape(1, -1), verbose = False))
+                    # action = np.argmax(model.predict(state.reshape(1, -1), verbose = False))
+                    state_tensor = tf.convert_to_tensor(state)
+                    state_tensor = tf.expand_dims(state_tensor, 0)
+                    action_probs = model(state_tensor, training = False)
+                    action = tf.argmax(action_probs[0]).numpy()
                 else:
                     action = env.action_space.sample()
                 # env.render()
-                # if episode % 50 == 0:
-                #     print(action)
-                state_p, reward, done, _ = env.step(action=action)
-
-                replay.add(state, action, reward, state_p, done)
-                #Learn 
-                states, actions, rewards, states_p, dones = replay.sample()
-                q_vals = model.predict(states, verbose = False)
-                # q_vals = np.zeros((states.shape[0], env.action_space.n))
-                # print(f'q_vals.shape:{q_vals.shape}')
-                # print(f'actions:{actions}')
-                q_vals_new = np.max(model.predict(states_p, verbose = False), axis = 1)
-
-                q_target = rewards + GAMMA * q_vals_new * dones
-                # q_vals[ np.array(range(len(actions))), actions] = q_target
-                # print(q_target.shape)
-                q_vals[ np.array(range(len(actions))), actions] = q_target
-                # print(q_vals.shape)
-                # print(states.shape)
-                model.fit(states, 
-                          q_vals, 
-                          epochs = 1, 
-                          verbose = False)
-
                 
+                state_p, reward, done, _ = env.step(action=action)
+                #Add to buffer
+                replay.add(state, action, reward, state_p, done) 
+                #Sample from experience buffer
+                states, actions, rewards, states_p, dones = replay.sample()
+                
+                #Convert to tensorflow
+                states = tf.convert_to_tensor(states, dtype = np.float32)
+                states_p = tf.convert_to_tensor(states_p, dtype = np.float32)
+                dones = tf.convert_to_tensor(dones, dtype = np.float32)
+                rewards = tf.convert_to_tensor(rewards, dtype = np.float32)
+                
+                q_vals_new = model.predict(states_p, verbose = False)
+                q_vals_new = tf.reduce_max(q_vals_new, axis = 1)
+                q_target = rewards + GAMMA * q_vals_new * (1-dones)
+                
+                #Create mask to only train on qvalues of selected actions
+                mask = tf.one_hot(actions, env.action_space.n, dtype = np.float32)
+                
+                #Learn
+                with tf.GradientTape() as tape:
+                    q_vals = model(states)
+                    tf.cast(q_vals, dtype=np.float32)
+                    #Apply mask to get the qvalue of only the action
+                    q_vals = tf.reduce_sum(tf.multiply(q_vals, mask), axis=1)
+                    
+                    loss = loss_fn(q_target, q_vals)
+                    
+                #Backpropagate
+                grads = tape.gradient(loss, model.trainable_weights)
+                optimizer.apply_gradients(zip(grads, model.trainable_weights))
+                
+                # q_vals = model.predict(states, verbose = False)
+                # # q_vals = np.zeros((states.shape[0], env.action_space.n))
+                # # print(f'q_vals.shape:{q_vals.shape}')
+                # # print(f'actions:{actions}')
+                # q_vals_new = np.max(model.predict(states_p, verbose = False), axis = 1)
+
+                # q_target = rewards + GAMMA * q_vals_new * dones
+                # # q_vals[ np.array(range(len(actions))), actions] = q_target
+                # # print(q_target.shape)
+                # q_vals[ np.array(range(len(actions))), actions] = q_target
+                # # print(q_vals.shape)
+                # # print(states.shape)
+                # model.fit(states, 
+                #           q_vals, 
+                #           epochs = 1, 
+                #           verbose = False)
                 state = state_p
                 score += reward
                 # print(state)
@@ -144,6 +171,7 @@ def dqn(EPSILON, env):
         
     finally:
         return scores
+    
             
                 
 if __name__ == "__main__":
@@ -173,4 +201,3 @@ if __name__ == "__main__":
     plt.show()
     
     
-        
