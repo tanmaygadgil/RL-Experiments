@@ -48,7 +48,7 @@ class ExperienceReplay:
         self.actions = np.zeros(buffer_size, dtype=np.int64)
         self.rewards = np.zeros(buffer_size, dtype=np.float32)
         self.states_p = np.zeros((buffer_size, *env.observation_space.shape), dtype=np.float32)
-        self.dones = np.zeros(buffer_size, dtype=np.bool)
+        self.dones = np.zeros(buffer_size, dtype=np.float32)
         self.buffer_size = buffer_size
         self.index = 0
     
@@ -147,13 +147,16 @@ def dqn(EPSILON, env):
                     rewards = tf.convert_to_tensor(rewards, dtype = np.float32)
                     
                     #Calculate targets
-                    q_vals_new = target.predict(states_p, verbose = False)
-                    # q_vals_new = tf.reduce_max(q_vals_new, axis = 1)
+                    q_vals_target = target.predict(states_p, verbose = False)
+                    #q_vals_target = tf.argmax(q_vals_new, axis = 1)
+                    q_vals_new = model.predict(states_p, verbose = False)
+                    taken_actions = np.argmax(q_vals_new, axis = 1)
+                    r = np.arange(len(q_vals_new))
                     # q_target = rewards + GAMMA * q_vals_new * (1 - dones)
-                    q_target = rewards + GAMMA * tf.reduce_max(q_vals_new, axis = 1) * (1 - dones)
+                    q_target = rewards + GAMMA * q_vals_target[r, taken_actions] * (1 - dones)
                     
                     #Create mask to only train on qvalues of selected actions
-                    mask = tf.one_hot(actions, env.action_space.n)
+                    mask = tf.one_hot(taken_actions, env.action_space.n)
                     
                     #Learn
                     with tf.GradientTape() as tape:
@@ -227,7 +230,7 @@ if __name__ == "__main__":
         env = gym.make("CartPole-v1")
     
     folder_string = generate_time_string()
-    os.mkdir(folder_string)
+    os.mkdir(os.path.join("results/",folder_string))
     
     scores = dqn(EPSILON,env)
     plt.show()
