@@ -156,7 +156,7 @@ def dqn(EPSILON, env):
                     q_target = rewards + GAMMA * q_vals_target[r, taken_actions] * (1 - dones)
                     
                     #Create mask to only train on qvalues of selected actions
-                    mask = tf.one_hot(taken_actions, env.action_space.n)
+                    mask = tf.one_hot(actions, env.action_space.n)
                     
                     #Learn
                     with tf.GradientTape() as tape:
@@ -230,7 +230,8 @@ if __name__ == "__main__":
         env = gym.make("CartPole-v1")
     
     folder_string = generate_time_string()
-    os.mkdir(os.path.join("results/",folder_string))
+    folder_string = os.path.join("results/",folder_string) 
+    os.mkdir(folder_string)
     
     scores = dqn(EPSILON,env)
     plt.show()
