@@ -104,7 +104,10 @@ def dqn(EPSILON, env):
                 # if episode % 50 == 0:
                 #     print(action)
                 state_p, reward, done, _ = env.step(action=action)
-
+                if episode % 50 == 0:
+                    # print(action)
+                    print(state)
+                    print(reward)
                 replay.add(state, action, reward, state_p, done)
                 #Learn 
                 states, actions, rewards, states_p, dones = replay.sample()
