@@ -18,7 +18,7 @@ import traceback
 EPSILON = 1
 EPSILON_DECAY = 0.99
 SAMPLE_BATCH = 256
-GAMMA = 0.95
+GAMMA = 0.99
 MIN_EPSILON = 0.01
 UPDATE_AFTER_ACTIONS = 5
 UPDATE_TARGET_NETWORK = 1000
@@ -104,7 +104,9 @@ def dqn(EPSILON, env):
         frames = 0
         model = Model(env.action_space.n)
         target = Model(env.action_space.n)
-        optimizer = keras.optimizers.Adam(lr = 0.001)
+        # model.compile(optimizer=keras.optimizers.Adam(lr=0.0005), loss='mse')
+        # target.compile(optimizer=keras.optimizers.Adam(lr=0.0005), loss='mse')
+        optimizer = keras.optimizers.Adam(lr = 0.0005)
         # loss_fn = tf.keras.losses.Huber()
         loss_fn = tf.keras.losses.MeanSquaredError()
         
@@ -138,23 +140,28 @@ def dqn(EPSILON, env):
                 replay.add(state, action, reward, state_p, done) 
                 if frames % UPDATE_AFTER_ACTIONS == 0:    
                     #Sample from experience buffer
-                    states, actions, rewards, states_p, dones = replay.sample()
+                    states, actions, rewards, states_p, dones = replay.sample(SAMPLE_BATCH)
                     
                     #Convert to tensorflow
                     # states = tf.convert_to_tensor(states, dtype = np.float32)
                     # states_p = tf.convert_to_tensor(states_p, dtype = np.float32)
-                    dones = tf.convert_to_tensor(dones, dtype = np.float32)
-                    rewards = tf.convert_to_tensor(rewards, dtype = np.float32)
+                    # dones = tf.convert_to_tensor(dones, dtype = np.float32)
+                    # rewards = tf.convert_to_tensor(rewards, dtype = np.float32)
                     
                     #Calculate targets
                     q_vals_target = target.predict(states_p, verbose = False)
                     #q_vals_target = tf.argmax(q_vals_new, axis = 1)
                     q_vals_new = model.predict(states_p, verbose = False)
+                    # q_vals = model.predict(states, verbose = False)
                     taken_actions = np.argmax(q_vals_new, axis = 1)
+                    
+                    # q_target = q_vals
                     r = np.arange(len(q_vals_new))
                     # q_target = rewards + GAMMA * q_vals_new * (1 - dones)
+                    # q_target[r, actions] = rewards + GAMMA * q_vals_target[r, taken_actions] * (1 - dones)
                     q_target = rewards + GAMMA * q_vals_target[r, taken_actions] * (1 - dones)
                     
+                    # _ = model.fit(states, q_target, verbose = False)
                     #Create mask to only train on qvalues of selected actions
                     mask = tf.one_hot(actions, env.action_space.n)
                     
