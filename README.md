@@ -6,11 +6,11 @@ This repository acts as my personal pathway to learn RL and a place practice imp
 ## Algorithms Explored
 
 - [x] DQN
-- [ ] Double DQN
+- [x] Double DQN
 - [ ] Duelling DQN
-- [ ] Advantage Actor Critic
+- [x] Advantage Actor Critic
 - [ ] Asynchronous Advantage Actor Critic (A3C)
-- [ ] 
+- [ ] Deep Deterministic Policy Gradient 
 
 
 ## Coursework and Theory
