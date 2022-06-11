@@ -18,13 +18,11 @@ EPSILON_DECAY = 0.99
 SAMPLE_BATCH = 256
 GAMMA = 0.99
 MIN_EPSILON = 0.01
-UPDATE_AFTER_ACTIONS = 5
-UPDATE_TARGET_NETWORK = 1000
 RENDER_SAMPLING_INTERVAL = 50
 LR_ACTOR = 0.001
-LR_CRITIC = 0.001
+LR_CRITIC = 0.002   
 TAU = 0.005
-NOISE = 0.1
+NOISE = 0.05
 MEMORY_SIZE = 200000
 
 def generate_time_string():
@@ -87,8 +85,8 @@ class ExperienceReplay:
 class Actor(keras.Model):
     def __init__(self, num_actions) -> None:
         super(Actor, self).__init__()
-        self.layer1 = keras.layers.Dense(64, activation = 'relu')
-        self.layer2 = keras.layers.Dense(64, activation = 'relu')
+        self.layer1 = keras.layers.Dense(256, activation = 'relu')
+        self.layer2 = keras.layers.Dense(256, activation = 'relu')
         self.actor = keras.layers.Dense(num_actions, activation = 'linear')
         
     def call(self, input):
@@ -102,8 +100,8 @@ class Actor(keras.Model):
 class Critic(keras.Model):
     def __init__(self) -> None:
         super(Critic, self).__init__()
-        self.layer1 = keras.layers.Dense(64, activation = 'relu')
-        self.layer2 = keras.layers.Dense(64, activation = 'relu')
+        self.layer1 = keras.layers.Dense(256, activation = 'relu')
+        self.layer2 = keras.layers.Dense(256, activation = 'relu')
         self.critic = keras.layers.Dense(1, activation = 'linear')
         
     def call(self, state, action):
@@ -114,25 +112,6 @@ class Critic(keras.Model):
         
         return x
     
-def update_network_params(actor, actor_target, critic, critic_target, tau = 1):
-    
-    #Updating actor
-    target_weights = actor_target.weights
-    weights = []
-    
-    for i, weight in enumerate(actor.weights):
-        weights.append(weight * tau + target_weights[i] * (1-tau))
-    actor_target.set_weights(weights)
-    
-    #Updating critic
-    target_weights = critic_target.weights
-    weights = []
-    
-    for i, weight in enumerate(critic.weights):
-        weights.append(weight * tau + target_weights[i] * (1-tau))
-    critic_target.set_weights(weights)
-    
-
     
 class DDPG:
     
@@ -159,6 +138,7 @@ class DDPG:
         self.n_actions = env.action_space.shape[0]
         self.min_val = env.action_space.low[0]
         self.max_val = env.action_space.high[0]
+        self.episode = 0
         
     def update_network_params(self, tau = 1):
     
@@ -180,13 +160,20 @@ class DDPG:
         
     def choose_action(self, observation, is_train = True):
         state = tf.convert_to_tensor([observation], dtype = np.float32)
-        action = self.actor(state)
+        action = self.actor(state,training=False)
+        if self.episode%RENDER_SAMPLING_INTERVAL == 0:
+            print(action)
+            print(self.actor.weights)
         if is_train:
-            action += tf.random.normal(shape=[self.n_actions], mean=0.0, stddev=NOISE)
+            action += tf.random.normal(shape=[self.n_actions], 
+                                       mean=0.0, 
+                                       stddev=NOISE)
             
+            
+
         action = tf.clip_by_value(action, clip_value_min=self.min_val, clip_value_max=self.max_val)
         
-        return action
+        return action[0]
     
     def add(self, state, action, reward, state_p, done):
         
@@ -194,7 +181,7 @@ class DDPG:
          
     def learn(self):
         
-        states, actions, rewards, states_p, dones = self.replay.sample(SAMPLE_BATCH)
+        states, actions, rewards, states_p, dones = self.replay.sample()
         
         states = tf.convert_to_tensor(states, dtype=np.float32)
         actions = tf.convert_to_tensor(actions, dtype=np.float32)
@@ -205,24 +192,24 @@ class DDPG:
         with tf.GradientTape() as tape:
             action_vals = self.actor_target(states_p)
             critic_vals_new = tf.squeeze(self.critic_target(states_p, action_vals), 1)
-            critic_vals = tf.squeeze(self.critic(states, action_vals), 1)
+            critic_vals = tf.squeeze(self.critic(states, actions), 1)
             
             critic_target = rewards + GAMMA * critic_vals_new * (1-dones)
             
             critic_loss = tf.keras.losses.MSE(critic_target, critic_vals)
         
-        critic_gradient = tape.gradient(critic_loss, self.critic.trainable_weights)
-        self.critic.optimizer.apply_gradients(zip(critic_gradient, self.critic.trainable_weights))
+        critic_gradient = tape.gradient(critic_loss, self.critic.trainable_variables)
+        self.critic.optimizer.apply_gradients(zip(critic_gradient, self.critic.trainable_variables))
         
         #update Actor
         with tf.GradientTape() as tape:
             new_actions = self.actor(states)
             
-            actor_loss = -self.critic(states, new_actions)
-            actor_loss = tf.reduce_mean(actor_loss)
+            actor_loss = - self.critic(states, new_actions)
+            actor_loss = tf.math.reduce_mean(tf.clip_by_value(actor_loss,1e-10,1e10))
             
-        actor_gradient = tape.gradient(actor_loss, self.actor.trainable_weights)
-        self.actor.optimizer.apply_gradients(zip(actor_gradient, self.actor.trainable_weights))
+        actor_gradient = tape.gradient(actor_loss, self.actor.trainable_variables)
+        self.actor.optimizer.apply_gradients(zip(actor_gradient, self.actor.trainable_variables))
         
         self.update_network_params(TAU)                     
 if __name__ == "__main__":
@@ -236,8 +223,8 @@ if __name__ == "__main__":
     if args_dict['environment'] == "lunarlander":
         env = gym.make("LunarLander-v2", 
                     continuous = True)
-    elif args_dict['environment'] == "cartpole":
-        env = gym.make("CartPole-v1")
+    elif args_dict['environment'] == "pendulum":
+        env = gym.make("Pendulum-v1")
     
     
     agent = DDPG(env)
@@ -249,7 +236,7 @@ if __name__ == "__main__":
     folder_string = generate_time_string()
     folder_string = os.path.join("results/",folder_string) 
     os.mkdir(folder_string)
-    
+    # try:
     for episode in range(EPISODES):
         state = env.reset()
         score = 0
@@ -257,12 +244,20 @@ if __name__ == "__main__":
         while True:
             
             action = agent.choose_action(state)
+            # print(action)
+            # if action[0] == np.nan:
+            #     print("yes")
+            if episode % RENDER_SAMPLING_INTERVAL == 0:
+                renders.append(env.render(mode="rgb_array"))
+                # print(action)
             
             state_p, reward, done, _ = env.step(action=action)
             
             agent.add(state, action, reward, state_p, done)
             
             agent.learn()
+            
+            agent.episode = episode
             
             score+=reward
             
@@ -272,16 +267,19 @@ if __name__ == "__main__":
                 if score > best_reward:
                         best_reward = score
                 print("Episode {}  Best Reward {} Last Reward {}"\
-                          .format(episode, best_reward, score))
+                        .format(episode, best_reward, score))
                 if episode % RENDER_SAMPLING_INTERVAL == 0:
                     file_str = f"{episode}-{score}.gif"
                     
                     save_frames_as_gif(renders, folder_string, file_str)   
                     
                 scores.append(score)
+                renders = []
+                break
+    # except:
+    #     traceback.print_exc()
     
-    
-    
+    # finally:    
     plt.show()
     print(scores)
     moving_ave = []
@@ -294,4 +292,3 @@ if __name__ == "__main__":
     plt.plot(range(len(scores)), scores)
     plt.plot(range(len(scores)), moving_ave)
     plt.show()
-    
