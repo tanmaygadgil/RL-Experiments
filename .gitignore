@@ -128,6 +128,12 @@ dmypy.json
 # Pyre type checker
 .pyre/
 
+
+Experiments/PolicyGradient/results
+Experiments/PolicyGradient/results/*
+Experiments/PolicyGradient/models
+Experiments/PolicyGradient/models/*
+
 Experiments/DQN/models
 Experiments/DQN/models/*
 Experiments/DQN/results
