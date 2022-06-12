@@ -1,0 +1,5 @@
+Size of State Space ->  8
+Size of Action Space ->  2
+Max Value of Action ->  1.0
+Min Value of Action ->  -1.0
+Episode * 0 * Avg Reward is ==> -508.7531280186085, Prev reward is ==> -508.7531280186085
