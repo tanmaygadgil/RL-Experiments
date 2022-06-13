@@ -20,7 +20,7 @@ GAMMA = 0.99
 MIN_EPSILON = 0.01
 RENDER_SAMPLING_INTERVAL = 50
 LR_ACTOR = 0.0001
-LR_CRITIC = 0.0002
+LR_CRITIC = 0.001
 TAU = 0.005
 NOISE = 0.1
 MEMORY_SIZE = 200000
@@ -99,7 +99,7 @@ class Actor(keras.Model):
         super(Actor, self).__init__()
         self.layer1 = keras.layers.Dense(512, activation='relu')
         self.layer2 = keras.layers.Dense(512, activation='relu')
-        self.actor = keras.layers.Dense(num_actions)
+        self.actor = keras.layers.Dense(num_actions, activation='tanh')
 
     def call(self, input):
         x = self.layer1(input)
@@ -223,6 +223,8 @@ class DDPG:
             critic_loss = self.critic_loss(critic_target, critic_vals)
             # if self.episode % RENDER_SAMPLING_INTERVAL == 0:
             #     tf.print(critic_loss)
+            if critic_loss < 1e-10 and critic_loss > -1e-9:
+                tf.print(critic_loss)
         critic_gradient = tape.gradient(critic_loss, self.critic.trainable_variables)
         self.critic.optimizer.apply_gradients(zip(critic_gradient, self.critic.trainable_variables))
 
@@ -234,7 +236,8 @@ class DDPG:
             actor_loss = -tf.math.reduce_mean(self.critic(states, new_actions, training = True))
             # if self.episode % RENDER_SAMPLING_INTERVAL == 0:
             #     tf.print(actor_loss)
-
+            if actor_loss < 1e-9 and actor_loss > -1e-9:
+                tf.print(actor_loss)
         actor_gradient = tape.gradient(actor_loss, self.actor.trainable_variables)
         self.actor.optimizer.apply_gradients(zip(actor_gradient, self.actor.trainable_variables))
 
@@ -255,6 +258,8 @@ if __name__ == "__main__":
                        continuous=True)
     elif args_dict['environment'] == "pendulum":
         env = gym.make("Pendulum-v1")
+    elif args_dict['environment'] == "bipedal":
+        env = gym.make("BipedalWalker-v3")
 
     agent = DDPG(env)
     best_reward = -float('inf')
